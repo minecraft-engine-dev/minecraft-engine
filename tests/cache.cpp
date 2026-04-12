@@ -22,7 +22,7 @@ int main()
     std::cout << "2. Create a cache" << std::endl;
     {
         std::string content = "Hello! This is a chache content for utf-8 text";
-        std::cout << "Content: " << content << std : endl;
+        std::cout << "Content: " << content << std::endl;
 
         mc::cache::CacheObject obj("example_cache");
         obj.write<std::string>(content); // freopen
