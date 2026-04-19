@@ -1,0 +1,14 @@
+#pragma once
+
+#include <filesystem>
+#include <string>
+
+namespace cnt::minecraft::java {
+    struct JavaInfo {
+        std::string name;
+        std::string version;
+        std::string vendor;
+        std::string architecture;
+        std::filesystem::path home;
+    };
+}

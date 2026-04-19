@@ -1,0 +1,30 @@
+#pragma once
+#include <string>
+#include <vector>
+
+namespace cnt::minecraft::assets {
+	enum VersionType {
+		RELEASE,
+		SNAPSHOT,
+		OLD_BETA,
+		OLD_ALPHA
+	};
+
+	struct Version {
+		std::string id;
+		VersionType type;
+		std::string url;
+		std::string time;
+		std::string release_time;
+	};
+
+	struct VersionManifestLatest {
+		std::string release;
+		std::string snapshot;
+	};
+
+	struct VersionManifest {
+		VersionManifestLatest latest;
+		std::vector<Version> versions;
+	};
+}

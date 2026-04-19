@@ -1,0 +1,6 @@
+#pragma once
+#include <string>
+
+namespace cnt::minecraft::download {
+	std::string curl(std::string);
+}

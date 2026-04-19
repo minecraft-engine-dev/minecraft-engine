@@ -1,0 +1,561 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <map>
+#include <optional>
+#include <variant>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
+namespace cnt::minecraft
+{
+
+    struct Library;
+    struct AssetIndex;
+    struct DownloadInfo;
+    struct Arguments;
+    struct JavaVersion;
+    struct LoggingConfig;
+
+    /// Operating System/Architecture Rules
+    struct OsRule
+    {
+        std::optional<std::string> name;
+        std::optional<std::string> arch;
+        std::optional<std::string> version;
+    };
+
+    /// Version range
+    struct VersionRange
+    {
+        std::optional<std::string> min;
+        std::optional<std::string> max;
+    };
+
+    /// Rule item (used for arguments / library filtering)
+    struct Rule
+    {
+        std::string action; // "allow" or "disallow"
+        std::optional<OsRule> os;
+        std::optional<std::map<std::string, bool>> features;
+        std::optional<VersionRange> versionRange;
+    };
+
+    /// Value with rules (used for elements in the arguments array)
+    struct RuleValue
+    {
+        std::vector<Rule> rules;
+        std::variant<std::string, std::vector<std::string>> value;
+    };
+
+    /// Download information (file metadata)
+    struct DownloadInfo
+    {
+        std::string sha1;
+        uint64_t size = 0;
+        std::string url;
+        std::optional<std::string> path;
+    };
+
+    /// Download information with native library classifiers
+    struct ClassifiersDownloads
+    {
+        std::optional<DownloadInfo> artifact;
+        std::map<std::string, DownloadInfo> classifiers;
+    };
+
+    /// Resource index information
+    struct AssetIndex
+    {
+        std::string id;
+        std::string sha1;
+        uint64_t size = 0;
+        uint64_t totalSize = 0;
+        std::string url;
+    };
+
+    // ---------- Library Structure ----------
+
+    /// Library definition (supports both old and new formats)
+    struct Library
+    {
+        std::string name;
+
+        std::optional<DownloadInfo> artifact;
+        std::optional<ClassifiersDownloads> downloads;
+
+        std::optional<std::string> url;
+
+        // Native library mapping
+        std::optional<std::map<std::string, std::string>> natives;
+
+        // Rule list used to determine whether the current platform should include this library
+        std::vector<Rule> rules;
+
+        // Extraction exclusions (legacy version)
+        std::optional<std::vector<std::string>> extract_exclude;
+    };
+
+    // ---------- Parameter Structure ----------
+
+    /// Top-level arguments object
+    struct Arguments
+    {
+        // game parameters
+        std::vector<std::variant<std::string, RuleValue>> game;
+
+        // jvm parameters
+        std::vector<std::variant<std::string, RuleValue>> jvm;
+    };
+
+    // ---------- Java Runtime Information ----------
+
+    struct JavaVersion
+    {
+        std::string component;
+        int majorVersion = 0;
+    };
+
+    // ---------- Log Configuration ----------
+
+    struct LoggingFile
+    {
+        std::string id;
+        std::string sha1;
+        uint64_t size = 0;
+        std::string url;
+    };
+
+    struct LoggingClient
+    {
+        std::string argument;
+        LoggingFile file;
+        std::string type;
+    };
+
+    struct LoggingConfig
+    {
+        LoggingClient client;
+    };
+
+    // ---------- Version Download Information ----------
+
+    struct VersionDownloads
+    {
+        DownloadInfo client;
+        std::optional<DownloadInfo> server;
+        std::optional<DownloadInfo> windows_server; // Available in some versions
+    };
+
+    // ---------- Main Version Structure ----------
+
+    /// Minecraft Version Metadata (Compatible with Old and New Formats)
+    struct VersionManifest
+    {
+        // Basic Tokens
+        std::string id;
+        std::string type;
+        std::string mainClass;
+
+        // Timestamp (ISO 8601 format)
+        std::string releaseTime;
+        std::string time;
+
+        // Launcher Requirements
+        int minimumLauncherVersion = 0;
+        std::optional<int> complianceLevel;
+
+        // Resource
+        AssetIndex assetIndex;
+        std::string assets;
+
+        // Download
+        VersionDownloads downloads;
+
+        // Java Runtime
+        JavaVersion javaVersion;
+
+        // Library List
+        std::vector<Library> libraries;
+
+        // Arguments
+        std::optional<Arguments> arguments;
+        std::optional<std::string> minecraftArguments;
+
+        // Log config
+        std::optional<LoggingConfig> logging;
+    };
+
+#define SERIALIZE_OPTIONAL_TO_JSON(member) \
+    if (obj.member.has_value())            \
+        j[#member] = *obj.member;
+
+#define DESERIALIZE_OPTIONAL_FROM_JSON(member) \
+    if (j.contains(#member))                   \
+        j.at(#member).get_to(obj.member);
+
+    template <typename T>
+    struct variant_from_json_visitor
+    {
+        T &value;
+        const json &j;
+
+        void operator()(const std::string &) const
+        {
+            if (j.is_string())
+                value = j.get<std::string>();
+        }
+
+        void operator()(const RuleValue &) const
+        {
+            if (j.is_object())
+                value = j.get<RuleValue>();
+        }
+    };
+
+    // ---------- OsRule ----------
+    inline void to_json(json &j, const OsRule &obj)
+    {
+        j = json::object();
+        SERIALIZE_OPTIONAL_TO_JSON(name);
+        SERIALIZE_OPTIONAL_TO_JSON(arch);
+        SERIALIZE_OPTIONAL_TO_JSON(version);
+    }
+
+    inline void from_json(const json &j, OsRule &obj)
+    {
+        DESERIALIZE_OPTIONAL_FROM_JSON(name);
+        DESERIALIZE_OPTIONAL_FROM_JSON(arch);
+        DESERIALIZE_OPTIONAL_FROM_JSON(version);
+    }
+
+    // ---------- VersionRange ----------
+    inline void to_json(json &j, const VersionRange &obj)
+    {
+        j = json::object();
+        SERIALIZE_OPTIONAL_TO_JSON(min);
+        SERIALIZE_OPTIONAL_TO_JSON(max);
+    }
+
+    inline void from_json(const json &j, VersionRange &obj)
+    {
+        DESERIALIZE_OPTIONAL_FROM_JSON(min);
+        DESERIALIZE_OPTIONAL_FROM_JSON(max);
+    }
+
+    // ---------- Rule ----------
+    inline void to_json(json &j, const Rule &obj)
+    {
+        j = json::object();
+        j["action"] = obj.action;
+        SERIALIZE_OPTIONAL_TO_JSON(os);
+        SERIALIZE_OPTIONAL_TO_JSON(features);
+        SERIALIZE_OPTIONAL_TO_JSON(versionRange);
+    }
+
+    inline void from_json(const json &j, Rule &obj)
+    {
+        j.at("action").get_to(obj.action);
+        DESERIALIZE_OPTIONAL_FROM_JSON(os);
+        DESERIALIZE_OPTIONAL_FROM_JSON(features);
+        DESERIALIZE_OPTIONAL_FROM_JSON(versionRange);
+    }
+
+    // ---------- RuleValue ----------
+    inline void to_json(json &j, const RuleValue &obj)
+    {
+        j = json::object();
+        j["rules"] = obj.rules;
+        std::visit([&j](auto &&arg)
+                   {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, std::string>) {
+            j["value"] = arg;
+        } else {
+            j["value"] = arg; // vector<string>
+        } }, obj.value);
+    }
+
+    inline void from_json(const json &j, RuleValue &obj)
+    {
+        j.at("rules").get_to(obj.rules);
+        const auto &value_json = j.at("value");
+        if (value_json.is_string())
+        {
+            obj.value = value_json.get<std::string>();
+        }
+        else if (value_json.is_array())
+        {
+            obj.value = value_json.get<std::vector<std::string>>();
+        }
+        else
+        {
+            throw std::runtime_error("Invalid RuleValue::value type");
+        }
+    }
+
+    // ---------- DownloadInfo ----------
+    inline void to_json(json &j, const DownloadInfo &obj)
+    {
+        j = json::object();
+        j["sha1"] = obj.sha1;
+        j["size"] = obj.size;
+        j["url"] = obj.url;
+        SERIALIZE_OPTIONAL_TO_JSON(path);
+    }
+
+    inline void from_json(const json &j, DownloadInfo &obj)
+    {
+        j.at("sha1").get_to(obj.sha1);
+        j.at("size").get_to(obj.size);
+        j.at("url").get_to(obj.url);
+        DESERIALIZE_OPTIONAL_FROM_JSON(path);
+    }
+
+    // ---------- ClassifiersDownloads ----------
+    inline void to_json(json &j, const ClassifiersDownloads &obj)
+    {
+        j = json::object();
+        SERIALIZE_OPTIONAL_TO_JSON(artifact);
+        if (!obj.classifiers.empty())
+        {
+            j["classifiers"] = obj.classifiers;
+        }
+    }
+
+    inline void from_json(const json &j, ClassifiersDownloads &obj)
+    {
+        DESERIALIZE_OPTIONAL_FROM_JSON(artifact);
+        if (j.contains("classifiers"))
+        {
+            j.at("classifiers").get_to(obj.classifiers);
+        }
+    }
+
+    // ---------- AssetIndex ----------
+    inline void to_json(json &j, const AssetIndex &obj)
+    {
+        j = json::object();
+        j["id"] = obj.id;
+        j["sha1"] = obj.sha1;
+        j["size"] = obj.size;
+        j["totalSize"] = obj.totalSize;
+        j["url"] = obj.url;
+    }
+
+    inline void from_json(const json &j, AssetIndex &obj)
+    {
+        j.at("id").get_to(obj.id);
+        j.at("sha1").get_to(obj.sha1);
+        j.at("size").get_to(obj.size);
+        // 兼容新旧字段名：新版 "totalSize"，旧版 "total_size"
+        if (j.contains("totalSize"))
+        {
+            j.at("totalSize").get_to(obj.totalSize);
+        }
+        else if (j.contains("total_size"))
+        {
+            j.at("total_size").get_to(obj.totalSize);
+        }
+        j.at("url").get_to(obj.url);
+    }
+
+    // ---------- Library ----------
+    inline void to_json(json &j, const Library &obj)
+    {
+        j = json::object();
+        j["name"] = obj.name;
+        SERIALIZE_OPTIONAL_TO_JSON(artifact);
+        SERIALIZE_OPTIONAL_TO_JSON(downloads);
+        SERIALIZE_OPTIONAL_TO_JSON(url);
+        SERIALIZE_OPTIONAL_TO_JSON(natives);
+        if (!obj.rules.empty())
+        {
+            j["rules"] = obj.rules;
+        }
+        SERIALIZE_OPTIONAL_TO_JSON(extract_exclude);
+    }
+
+    inline void from_json(const json &j, Library &obj)
+    {
+        j.at("name").get_to(obj.name);
+        DESERIALIZE_OPTIONAL_FROM_JSON(artifact);
+        DESERIALIZE_OPTIONAL_FROM_JSON(downloads);
+        DESERIALIZE_OPTIONAL_FROM_JSON(url);
+        DESERIALIZE_OPTIONAL_FROM_JSON(natives);
+        if (j.contains("rules"))
+        {
+            j.at("rules").get_to(obj.rules);
+        }
+        if (j.contains("extract"))
+        {
+            if (j["extract"].is_object() && j["extract"].contains("exclude"))
+            {
+                obj.extract_exclude = j["extract"]["exclude"].get<std::vector<std::string>>();
+            }
+        }
+    }
+
+    // ---------- Arguments ----------
+    inline void to_json(json &j, const Arguments &obj)
+    {
+        j = json::object();
+        j["game"] = obj.game;
+        j["jvm"] = obj.jvm;
+    }
+
+    inline void from_json(const json &j, Arguments &obj)
+    {
+        if (j.contains("game"))
+        {
+            for (const auto &item : j["game"])
+            {
+                if (item.is_string())
+                {
+                    obj.game.emplace_back(item.get<std::string>());
+                }
+                else
+                {
+                    obj.game.emplace_back(item.get<RuleValue>());
+                }
+            }
+        }
+        if (j.contains("jvm"))
+        {
+            for (const auto &item : j["jvm"])
+            {
+                if (item.is_string())
+                {
+                    obj.jvm.emplace_back(item.get<std::string>());
+                }
+                else
+                {
+                    obj.jvm.emplace_back(item.get<RuleValue>());
+                }
+            }
+        }
+    }
+
+    // ---------- JavaVersion ----------
+    inline void to_json(json &j, const JavaVersion &obj)
+    {
+        j = json::object();
+        j["component"] = obj.component;
+        j["majorVersion"] = obj.majorVersion;
+    }
+
+    inline void from_json(const json &j, JavaVersion &obj)
+    {
+        j.at("component").get_to(obj.component);
+        j.at("majorVersion").get_to(obj.majorVersion);
+    }
+
+    // ---------- LoggingFile ----------
+    inline void to_json(json &j, const LoggingFile &obj)
+    {
+        j = json::object();
+        j["id"] = obj.id;
+        j["sha1"] = obj.sha1;
+        j["size"] = obj.size;
+        j["url"] = obj.url;
+    }
+
+    inline void from_json(const json &j, LoggingFile &obj)
+    {
+        j.at("id").get_to(obj.id);
+        j.at("sha1").get_to(obj.sha1);
+        j.at("size").get_to(obj.size);
+        j.at("url").get_to(obj.url);
+    }
+
+    // ---------- LoggingClient ----------
+    inline void to_json(json &j, const LoggingClient &obj)
+    {
+        j = json::object();
+        j["argument"] = obj.argument;
+        j["file"] = obj.file;
+        j["type"] = obj.type;
+    }
+
+    inline void from_json(const json &j, LoggingClient &obj)
+    {
+        j.at("argument").get_to(obj.argument);
+        j.at("file").get_to(obj.file);
+        j.at("type").get_to(obj.type);
+    }
+
+    // ---------- LoggingConfig ----------
+    inline void to_json(json &j, const LoggingConfig &obj)
+    {
+        j = json::object();
+        j["client"] = obj.client;
+    }
+
+    inline void from_json(const json &j, LoggingConfig &obj)
+    {
+        j.at("client").get_to(obj.client);
+    }
+
+    // ---------- VersionDownloads ----------
+    inline void to_json(json &j, const VersionDownloads &obj)
+    {
+        j = json::object();
+        j["client"] = obj.client;
+        SERIALIZE_OPTIONAL_TO_JSON(server);
+        SERIALIZE_OPTIONAL_TO_JSON(windows_server);
+    }
+
+    inline void from_json(const json &j, VersionDownloads &obj)
+    {
+        j.at("client").get_to(obj.client);
+        DESERIALIZE_OPTIONAL_FROM_JSON(server);
+        DESERIALIZE_OPTIONAL_FROM_JSON(windows_server);
+    }
+
+    // ---------- VersionManifest ----------
+    inline void to_json(json &j, const VersionManifest &obj)
+    {
+        j = json::object();
+        j["id"] = obj.id;
+        j["type"] = obj.type;
+        j["mainClass"] = obj.mainClass;
+        j["releaseTime"] = obj.releaseTime;
+        j["time"] = obj.time;
+        j["minimumLauncherVersion"] = obj.minimumLauncherVersion;
+        SERIALIZE_OPTIONAL_TO_JSON(complianceLevel);
+        j["assetIndex"] = obj.assetIndex;
+        j["assets"] = obj.assets;
+        j["downloads"] = obj.downloads;
+        j["javaVersion"] = obj.javaVersion;
+        j["libraries"] = obj.libraries;
+        SERIALIZE_OPTIONAL_TO_JSON(arguments);
+        SERIALIZE_OPTIONAL_TO_JSON(minecraftArguments);
+        SERIALIZE_OPTIONAL_TO_JSON(logging);
+    }
+
+    inline void from_json(const json &j, VersionManifest &obj)
+    {
+        j.at("id").get_to(obj.id);
+        j.at("type").get_to(obj.type);
+        j.at("mainClass").get_to(obj.mainClass);
+        j.at("releaseTime").get_to(obj.releaseTime);
+        j.at("time").get_to(obj.time);
+        j.at("minimumLauncherVersion").get_to(obj.minimumLauncherVersion);
+        DESERIALIZE_OPTIONAL_FROM_JSON(complianceLevel);
+        j.at("assetIndex").get_to(obj.assetIndex);
+        j.at("assets").get_to(obj.assets);
+        j.at("downloads").get_to(obj.downloads);
+        j.at("javaVersion").get_to(obj.javaVersion);
+        j.at("libraries").get_to(obj.libraries);
+        DESERIALIZE_OPTIONAL_FROM_JSON(arguments);
+        DESERIALIZE_OPTIONAL_FROM_JSON(minecraftArguments);
+        DESERIALIZE_OPTIONAL_FROM_JSON(logging);
+    }
+
+#undef SERIALIZE_OPTIONAL_TO_JSON
+#undef DESERIALIZE_OPTIONAL_FROM_JSON
+
+} // namespace cnt::minecraft
